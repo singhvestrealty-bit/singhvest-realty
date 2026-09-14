@@ -177,6 +177,125 @@
     padding:4px 10px;
     letter-spacing:0.03em;
   }
+  .card-media-badge{
+    position:absolute;
+    bottom:14px;
+    right:14px;
+    background:rgba(7,19,9,0.82);
+    border:1px solid var(--surface-hairline);
+    color:var(--ivory);
+    font-size:0.75rem;
+    padding:5px 11px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    cursor:pointer;
+  }
+  .card-media-badge svg{width:13px;height:13px;flex-shrink:0;}
+  .card-image{cursor:pointer;}
+
+  /* ---------- Lightbox ---------- */
+  .lightbox{
+    position:fixed;
+    inset:0;
+    background:rgba(4,11,7,0.94);
+    z-index:100;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:5vh 4vw;
+  }
+  .lightbox.open{display:flex;}
+  .lightbox-inner{
+    max-width:1000px;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .lightbox-stage{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--surface-hairline);
+    aspect-ratio:16/10;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .lightbox-stage img, .lightbox-stage video{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    background:#000;
+  }
+  .lightbox-nav{
+    position:absolute;
+    top:0;
+    bottom:0;
+    width:64px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:transparent;
+    border:none;
+    color:var(--ivory);
+    font-family:'Cormorant Garamond', serif;
+    font-size:2rem;
+    cursor:pointer;
+    opacity:0.7;
+    transition:opacity .2s ease;
+  }
+  .lightbox-nav:hover{opacity:1;}
+  .lightbox-nav.prev{left:0;}
+  .lightbox-nav.next{right:0;}
+  .lightbox-close{
+    position:absolute;
+    top:-42px;
+    right:0;
+    background:none;
+    border:none;
+    color:var(--sage);
+    font-size:0.95rem;
+    cursor:pointer;
+    letter-spacing:0.03em;
+  }
+  .lightbox-close:hover{color:var(--gold-bright);}
+  .lightbox-caption{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    color:var(--sage);
+    font-size:0.9rem;
+  }
+  .lightbox-thumbs{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding-bottom:4px;
+  }
+  .lightbox-thumbs img, .lightbox-thumbs .thumb-video{
+    width:74px;
+    height:56px;
+    object-fit:cover;
+    border:1px solid var(--surface-hairline);
+    cursor:pointer;
+    opacity:0.55;
+    flex-shrink:0;
+    transition:opacity .2s ease, border-color .2s ease;
+  }
+  .lightbox-thumbs img.active, .lightbox-thumbs .thumb-video.active{
+    opacity:1;
+    border-color:var(--gold);
+  }
+  .thumb-video{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--surface);
+    color:var(--gold);
+    font-size:0.7rem;
+  }
   .card-body{
     padding:22px 24px 26px;
     flex:1;
@@ -315,6 +434,21 @@
   </div>
 </main>
 
+<div class="lightbox" id="lightbox">
+  <div class="lightbox-inner">
+    <button class="lightbox-close" id="lightbox-close">Close ✕</button>
+    <div class="lightbox-stage" id="lightbox-stage">
+      <button class="lightbox-nav prev" id="lightbox-prev">‹</button>
+      <button class="lightbox-nav next" id="lightbox-next">›</button>
+    </div>
+    <div class="lightbox-caption">
+      <span id="lightbox-title" class="serif" style="font-size:1.2rem;color:var(--ivory);"></span>
+      <span id="lightbox-count"></span>
+    </div>
+    <div class="lightbox-thumbs" id="lightbox-thumbs"></div>
+  </div>
+</div>
+
 <footer>
   <span>SinghVest Realty, Ludhiana</span>
   <span>Enquiries routed to WhatsApp · <a id="footer-whatsapp" href="#" target="_blank" rel="noopener">+91 76579 97576</a></span>
@@ -373,14 +507,44 @@
     return `https://placehold.co/600x450/${bg}/${fg}?text=${label}&font=playfair-display`;
   }
 
-  function renderCard(listing){
+  // image_url column can hold one or several links/relative paths separated by "|"
+  function getImages(listing){
+    const raw = listing.image_url || listing.image_urls || '';
+    const list = raw.split('|').map(s => s.trim()).filter(Boolean);
+    return list.length ? list : [];
+  }
+
+  function isYouTube(url){
+    return /youtube\.com|youtu\.be/.test(url);
+  }
+  function youTubeEmbed(url){
+    const idMatch = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
+    const id = idMatch ? idMatch[1] : '';
+    return `https://www.youtube.com/embed/${id}`;
+  }
+
+  const ICON_CAMERA = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.2"/></svg>`;
+  const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+
+  function renderCard(listing, idx){
     const status = (listing.status || 'Available').trim();
-    const img = listing.image_url && listing.image_url.startsWith('http') ? listing.image_url : placeholderImage(listing.title);
+    const images = getImages(listing);
+    const cover = images[0] || placeholderImage(listing.title);
+    const hasVideo = !!(listing.video_url && listing.video_url.trim());
+    let badge = '';
+    if(images.length > 1 && hasVideo){
+      badge = `<div class="card-media-badge">${ICON_CAMERA}${images.length} photos + video</div>`;
+    } else if(images.length > 1){
+      badge = `<div class="card-media-badge">${ICON_CAMERA}${images.length} photos</div>`;
+    } else if(hasVideo){
+      badge = `<div class="card-media-badge">${ICON_PLAY}Video</div>`;
+    }
     return `
       <div class="card" data-type="${(listing.type||'').toLowerCase()}" data-search="${(listing.title+' '+listing.location+' '+listing.description).toLowerCase()}">
-        <div class="card-image">
-          <img src="${img}" alt="${listing.title}" loading="lazy" onerror="this.src='${placeholderImage(listing.title)}'">
+        <div class="card-image" data-listing-idx="${idx}">
+          <img src="${cover}" alt="${listing.title}" loading="lazy" onerror="this.src='${placeholderImage(listing.title)}'">
           <div class="card-status">${status}</div>
+          ${badge}
         </div>
         <div class="card-body">
           <div class="card-meta">${listing.type || 'Property'}${listing.bedrooms ? ' · ' + listing.bedrooms : ''}${listing.area ? ' · ' + listing.area : ''}</div>
@@ -397,6 +561,97 @@
   }
 
   let allListings = [];
+
+  // ---------- Lightbox ----------
+  let lbItems = [];   // [{type:'image'|'video', src}]
+  let lbIndex = 0;
+  let lbTitle = '';
+
+  function buildLightboxItems(listing){
+    const items = getImages(listing).map(src => ({type:'image', src}));
+    if(listing.video_url && listing.video_url.trim()){
+      const v = listing.video_url.trim();
+      items.push({type:'video', src: v, youtube: isYouTube(v)});
+    }
+    return items.length ? items : [{type:'image', src: placeholderImage(listing.title)}];
+  }
+
+  function renderLightboxStage(){
+    const stage = document.getElementById('lightbox-stage');
+    stage.querySelectorAll('img,video,iframe').forEach(el => el.remove());
+    const item = lbItems[lbIndex];
+    let el;
+    if(item.type === 'video'){
+      if(item.youtube){
+        el = document.createElement('iframe');
+        el.src = youTubeEmbed(item.src);
+        el.style.width = '100%';
+        el.style.height = '100%';
+        el.style.border = '0';
+        el.allow = 'autoplay; encrypted-media; picture-in-picture';
+        el.allowFullscreen = true;
+      } else {
+        el = document.createElement('video');
+        el.src = item.src;
+        el.controls = true;
+        el.autoplay = true;
+      }
+    } else {
+      el = document.createElement('img');
+      el.src = item.src;
+    }
+    stage.insertBefore(el, stage.firstChild.nextSibling ? stage.children[1] : null);
+    stage.appendChild(el);
+    document.getElementById('lightbox-count').textContent = `${lbIndex + 1} / ${lbItems.length}`;
+    document.getElementById('lightbox-title').textContent = lbTitle;
+    document.querySelectorAll('.lightbox-thumbs > *').forEach((t, i) => t.classList.toggle('active', i === lbIndex));
+    const nav = lbItems.length > 1;
+    document.getElementById('lightbox-prev').style.display = nav ? '' : 'none';
+    document.getElementById('lightbox-next').style.display = nav ? '' : 'none';
+  }
+
+  function renderLightboxThumbs(){
+    const wrap = document.getElementById('lightbox-thumbs');
+    wrap.innerHTML = '';
+    if(lbItems.length <= 1){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'flex';
+    lbItems.forEach((item, i) => {
+      let el;
+      if(item.type === 'video'){
+        el = document.createElement('div');
+        el.className = 'thumb-video';
+        el.textContent = 'VIDEO';
+      } else {
+        el = document.createElement('img');
+        el.src = item.src;
+      }
+      el.addEventListener('click', () => { lbIndex = i; renderLightboxStage(); });
+      wrap.appendChild(el);
+    });
+  }
+
+  function openLightbox(listing){
+    lbItems = buildLightboxItems(listing);
+    lbIndex = 0;
+    lbTitle = listing.title || '';
+    renderLightboxThumbs();
+    renderLightboxStage();
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox(){
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lightbox-stage').querySelectorAll('img,video,iframe').forEach(el => el.remove());
+  }
+  document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+  document.getElementById('lightbox').addEventListener('click', (e) => { if(e.target.id === 'lightbox') closeLightbox(); });
+  document.getElementById('lightbox-prev').addEventListener('click', () => { lbIndex = (lbIndex - 1 + lbItems.length) % lbItems.length; renderLightboxStage(); });
+  document.getElementById('lightbox-next').addEventListener('click', () => { lbIndex = (lbIndex + 1) % lbItems.length; renderLightboxStage(); });
+  document.addEventListener('keydown', (e) => {
+    if(!document.getElementById('lightbox').classList.contains('open')) return;
+    if(e.key === 'Escape') closeLightbox();
+    if(e.key === 'ArrowLeft') document.getElementById('lightbox-prev').click();
+    if(e.key === 'ArrowRight') document.getElementById('lightbox-next').click();
+  });
 
   function applyFilters(){
     const q = document.getElementById('search-input').value.trim().toLowerCase();
@@ -452,7 +707,7 @@
         return;
       }
 
-      grid.innerHTML = records.map(renderCard).join('');
+      grid.innerHTML = records.map((r, i) => renderCard(r, i)).join('');
       populateTypeFilter(records);
 
       document.getElementById('stat-count').textContent = records.length;
@@ -462,6 +717,13 @@
 
       document.getElementById('search-input').addEventListener('input', applyFilters);
       document.getElementById('type-select').addEventListener('change', applyFilters);
+
+      grid.querySelectorAll('.card-image[data-listing-idx]').forEach(el => {
+        el.addEventListener('click', () => {
+          const listing = records[parseInt(el.dataset.listingIdx, 10)];
+          openLightbox(listing);
+        });
+      });
     } catch(err){
       grid.innerHTML = `<div class="empty-state"><h3>Couldn't load listings</h3><p>There was a problem reaching the inventory sheet. Please refresh, or contact us directly on <a href="https://wa.me/${WHATSAPP_NUMBER}" target="_blank" rel="noopener" style="color:var(--gold)">WhatsApp</a>.</p></div>`;
       console.error(err);
