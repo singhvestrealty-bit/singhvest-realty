@@ -193,6 +193,25 @@
   }
   .card-media-badge svg{width:13px;height:13px;flex-shrink:0;}
   .card-image{cursor:pointer;}
+  .card-play-btn{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:rgba(7,19,9,0.72);
+    border:1.5px solid var(--gold);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--gold-bright);
+    transition:background .2s ease, transform .2s ease;
+    z-index:2;
+  }
+  .card-play-btn svg{width:20px;height:20px;margin-left:3px;}
+  .card-image:hover .card-play-btn{background:var(--gold);color:var(--bg-deep);transform:translate(-50%,-50%) scale(1.08);}
 
   /* ---------- Lightbox ---------- */
   .lightbox{
@@ -274,7 +293,7 @@
     overflow-x:auto;
     padding-bottom:4px;
   }
-  .lightbox-thumbs img, .lightbox-thumbs .thumb-video{
+  .lightbox-thumbs img, .lightbox-thumbs .thumb-video, .lightbox-thumbs .thumb-video-img{
     width:74px;
     height:56px;
     object-fit:cover;
@@ -284,7 +303,7 @@
     flex-shrink:0;
     transition:opacity .2s ease, border-color .2s ease;
   }
-  .lightbox-thumbs img.active, .lightbox-thumbs .thumb-video.active{
+  .lightbox-thumbs img.active, .lightbox-thumbs .thumb-video.active, .lightbox-thumbs .thumb-video-img.active{
     opacity:1;
     border-color:var(--gold);
   }
@@ -520,7 +539,7 @@
   function youTubeEmbed(url){
     const idMatch = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
     const id = idMatch ? idMatch[1] : '';
-    return `https://www.youtube.com/embed/${id}`;
+    return `https://www.youtube.com/embed/${id}?autoplay=1`;
   }
 
   const ICON_CAMERA = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.2"/></svg>`;
@@ -544,6 +563,7 @@
         <div class="card-image" data-listing-idx="${idx}">
           <img src="${cover}" alt="${listing.title}" loading="lazy" onerror="this.src='${placeholderImage(listing.title)}'">
           <div class="card-status">${status}</div>
+          ${hasVideo ? `<div class="card-play-btn" data-listing-idx="${idx}" data-open-video="1">${ICON_PLAY}</div>` : ''}
           ${badge}
         </div>
         <div class="card-body">
@@ -618,9 +638,18 @@
     lbItems.forEach((item, i) => {
       let el;
       if(item.type === 'video'){
-        el = document.createElement('div');
-        el.className = 'thumb-video';
-        el.textContent = 'VIDEO';
+        if(item.youtube){
+          const idMatch = item.src.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
+          const vid = idMatch ? idMatch[1] : '';
+          el = document.createElement('img');
+          el.src = `https://img.youtube.com/vi/${vid}/hqdefault.jpg`;
+          el.style.opacity = '0.55';
+          el.classList.add('thumb-video-img');
+        } else {
+          el = document.createElement('div');
+          el.className = 'thumb-video';
+          el.textContent = 'VIDEO';
+        }
       } else {
         el = document.createElement('img');
         el.src = item.src;
@@ -630,9 +659,9 @@
     });
   }
 
-  function openLightbox(listing){
+  function openLightbox(listing, startIndex){
     lbItems = buildLightboxItems(listing);
-    lbIndex = 0;
+    lbIndex = startIndex || 0;
     lbTitle = listing.title || '';
     renderLightboxThumbs();
     renderLightboxStage();
@@ -719,9 +748,19 @@
       document.getElementById('type-select').addEventListener('change', applyFilters);
 
       grid.querySelectorAll('.card-image[data-listing-idx]').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          if(e.target.closest('[data-open-video]')) return; // handled below
           const listing = records[parseInt(el.dataset.listingIdx, 10)];
           openLightbox(listing);
+        });
+      });
+      grid.querySelectorAll('[data-open-video]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const listing = records[parseInt(el.dataset.listingIdx, 10)];
+          const items = buildLightboxItems(listing);
+          const videoIdx = items.findIndex(it => it.type === 'video');
+          openLightbox(listing, videoIdx >= 0 ? videoIdx : 0);
         });
       });
     } catch(err){
