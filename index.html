@@ -1357,7 +1357,7 @@ body.detail-open .hero,body.detail-open #projects,body.detail-open .filter-bar,b
   });
 
   function maybeTriggerPopup(){
-    if(sessionStorage.getItem('svrEnquiryPopupShown')) return;
+    if(!window.ALL || sessionStorage.getItem('svrEnquiryPopupShown')) return;
     const scrolled = window.scrollY;
     const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
     if(maxScroll > 0 && scrolled / maxScroll > 0.4){
